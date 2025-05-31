@@ -1,67 +1,38 @@
-import express from 'express';
-import axios from 'axios';
-import cors from 'cors';
+
+const express = require("express");
+const bodyParser = require("body-parser");
+const cors = require("cors");
+const { Configuration, OpenAIApi } = require("openai");
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
-app.post('/gerar-texto', async (req, res) => {
-  const { prompt, tipo, usuario_id } = req.body;
+app.post("/generate", async (req, res) => {
+  const { prompt } = req.body;
+
+  if (!prompt) {
+    return res.status(400).json({ error: "Prompt é obrigatório." });
+  }
 
   try {
-    const respostaIA = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "user",
-            content: `Gere um ${tipo} com base nesse pedido: ${prompt}`
-          }
-        ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${OPENAI_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    const completion = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
+    });
 
-    const respostaGerada = respostaIA.data.choices[0].message.content;
-
-    await axios.post(
-      `${SUPABASE_URL}/rest/v1/geracoes`,
-      {
-        prompt,
-        tipo_de_texto: tipo,
-        resposta: respostaGerada,
-        usuario_id,
-        created_at: new Date().toISOString()
-      },
-      {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    res.json({ sucesso: true, resposta: respostaGerada });
-
+    const text = completion.data.choices[0].message.content;
+    res.json({ result: text });
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ erro: "Erro ao gerar texto" });
+    console.error(err);
+    res.status(500).json({ error: "Erro ao gerar resposta." });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Servidor rodando na porta ${port}`));
